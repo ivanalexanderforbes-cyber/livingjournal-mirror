@@ -1,0 +1,77 @@
+const express = require("express");
+const OpenAI = require("openai");
+
+const app = express();
+app.use(express.json());
+
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+const LIVING_JOURNAL_SYSTEM_PROMPT = `
+You are the Living Journal PRO Mirror.
+
+Your role is not to advise, coach, motivate, fix, summarise, or optimise.
+Your role is to meet the writer exactly where they are, with clarity, depth, and respect.
+
+You respond to a single journal entry written by the user.
+
+You must output a JSON object with EXACTLY these fields:
+- "ai_mirror": string
+- "ai_mirror_short": string
+- "mirror_summary": string
+
+Respond ONLY with a JSON object matching the schema.
+`;
+
+app.post("/mirror", async (req, res) => {
+  try {
+    const journalEntry = req.body.entry;
+
+    if (!journalEntry) {
+      return res.status(400).json({ error: "Missing journal entry" });
+    }
+
+    const completion = await client.chat.completions.create({
+      model: "gpt-4.1-mini",
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: LIVING_JOURNAL_SYSTEM_PROMPT },
+        { role: "user", content: journalEntry },
+      ],
+      temperature: 0.7,
+    });
+
+    const rawOutput = completion.choices[0].message.content;
+    console.log("Raw mirror output:", rawOutput);
+
+    const parsedOutput = JSON.parse(rawOutput);
+    res.json(parsedOutput);
+  } catch (error) {
+    console.error("Mirror error:", error);
+    res.status(500).json({ error: "Mirror failed" });
+  }
+});
+
+const PORT = 3000;
+app.listen(PORT, () => {
+  console.log(`Mirror server running on http://localhost:${PORT}`);
+const completion = await client.chat.completions.create({
+  model: "gpt-4.1-mini",
+  messages: [
+    { role: "system", content: LIVING_JOURNAL_SYSTEM_PROMPT },
+    { role: "user", content: journalEntry },
+  ],
+  temperature: 0.7,
+});
+const completion = await client.chat.completions.create({
+  model: "gpt-4.1-mini",
+  messages: [
+    { role: "system", content: LIVING_JOURNAL_SYSTEM_PROMPT },
+    { role: "user", content: journalEntry },
+  ],
+  temperature: 0.7,
+});
+
+
+
