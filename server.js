@@ -28,8 +28,6 @@ app.use(
   })
 );
 
-// Ensure OPTIONS requests are answered
-app.options("*", cors());
 
 // Parse JSON request bodies
 app.use(express.json());
