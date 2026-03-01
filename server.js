@@ -1,10 +1,38 @@
 const express = require("express");
 const OpenAI = require("openai");
-const cors = require('cors');
-const app = express();
-app.use(cors());
-app.use(express.json());
+const cors = require("cors");
 
+const app = express();
+
+// CORS: allow FlutterFlow web app + local dev
+const allowedOrigins = [
+  "https://living-journal-p-r-o-yizkok.flutterflow.app",
+  "https://preview.flutterflow.app",
+  "http://localhost:3000",
+  "http://localhost:8080",
+];
+
+// Handle CORS for all routes, including preflight
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow non-browser / curl requests (no origin)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("Not allowed by CORS"));
+    },
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+// Ensure OPTIONS requests are answered
+app.options("*", cors());
+
+// Parse JSON request bodies
+app.use(express.json());
 
 // Use the API key from the environment
 const client = new OpenAI({
