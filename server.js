@@ -1,22 +1,26 @@
 const express = require("express");
 const cors = require("cors");
+const OpenAI = require("openai");
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 const app = express();
 
-// Allow requests from FlutterFlow test and deployed web app
-app.use(cors({
-  origin: true,
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 
-// Health check
 app.get("/", (req, res) => {
   res.status(200).send("Living Journal API is running");
 });
 
-// Mirror endpoint
 app.post("/mirror", async (req, res) => {
   try {
     const { entry } = req.body;
@@ -29,48 +33,58 @@ app.post("/mirror", async (req, res) => {
 
     const cleanedEntry = entry.trim();
 
-    // Temporary reflection logic so the endpoint is stable.
-    // We can replace this with OpenAI logic after the connection works.
-    const primary_emotion = cleanedEntry.toLowerCase().includes("grateful")
-      ? "grateful"
-      : cleanedEntry.toLowerCase().includes("tired")
-      ? "tired"
-      : cleanedEntry.toLowerCase().includes("calm")
-      ? "calm"
-      : "reflective";
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: `
+You are KAI, a reflective journaling companion.
 
-    const emotion_intensity = 6;
+Return ONLY JSON with:
+primary_emotion
+emotion_intensity
+ai_mirror
+ai_mirror_short
+mirror_summary
+awareness_nudge
+sentiment_score
+top_keywords
+top_themes
+          `.trim(),
+        },
+        {
+          role: "user",
+          content: cleanedEntry,
+        },
+      ],
+    });
 
-    const ai_mirror = `Your words suggest a thoughtful inner world. There is a sense that you are trying to understand what this moment means for you, rather than simply reacting to it. That 
-willingness to pause and reflect is part of your strength.`;
+    const raw = completion.choices?.[0]?.message?.content || "{}";
 
-    const ai_mirror_short = `You are reflecting with honesty and self-awareness.`;
-
-    const mirror_summary = `This entry reflects self-awareness, emotional presence, and a desire to understand your inner experience.`;
-
-    const awareness_nudge = `Pause for a moment and ask yourself: what am I really being invited to notice here?`;
-
-    const sentiment_score = 0.35;
-    const top_keywords = ["reflection", "awareness", "growth"];
-    const top_themes = ["self-awareness", "emotional insight", "inner clarity"];
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = {};
+    }
 
     return res.status(200).json({
-      primary_emotion,
-      emotion_intensity,
-      ai_mirror,
-      ai_mirror_short,
-      mirror_summary,
-      awareness_nudge,
-      sentiment_score,
-      top_keywords,
-      top_themes,
+      primary_emotion: parsed.primary_emotion || "reflective",
+      emotion_intensity: parsed.emotion_intensity || 5,
+      ai_mirror: parsed.ai_mirror || "You showed up today.",
+      ai_mirror_short: parsed.ai_mirror_short || "You're noticing something.",
+      mirror_summary: parsed.mirror_summary || "Self-awareness present.",
+      awareness_nudge: parsed.awareness_nudge || "Pause and notice.",
+      sentiment_score: parsed.sentiment_score || 0,
+      top_keywords: parsed.top_keywords || ["reflection"],
+      top_themes: parsed.top_themes || ["awareness"],
       ai_generated: true,
     });
   } catch (error) {
-    console.error("Mirror route error:", error);
-    return res.status(500).json({
-      error: "Internal server error.",
-    });
+    console.error(error);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
@@ -79,6 +93,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-
-
-
