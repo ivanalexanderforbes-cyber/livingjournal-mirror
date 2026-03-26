@@ -38,8 +38,8 @@ app.post("/mirror", async (req, res) => {
       response_format: { type: "json_object" },
       messages: [
         {
-          role: "system",
-          content: `
+ role: "system",
+ content: `
 You are KAI — a calm, present, emotionally intelligent reflection.
 
 You do not explain.
@@ -88,7 +88,8 @@ awareness_nudge
 sentiment_score
 top_keywords
 top_themes
-        },
+`
+ },
         {
           role: "user",
           content: cleanedEntry,
@@ -126,6 +127,6 @@ top_themes
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+ console.log(`Server running on port ${PORT}`);
 });
 
