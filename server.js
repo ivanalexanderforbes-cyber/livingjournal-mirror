@@ -1,132 +1,170 @@
 const express = require("express");
 const cors = require("cors");
+const admin = require("firebase-admin");
 const OpenAI = require("openai");
 
 const app = express();
+
+app.use(cors());
+app.use(express.json());
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-app.use(
-  cors({
-    origin: true,
-    credentials: true,
-  })
-);
+// Firebase setup
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    }),
+  });
+}
 
-app.use(express.json());
+const db = admin.firestore();
+
+function buildTrendContext(previousEntries = []) {
+  if (!previousEntries.length) {
+    return "No previous journal entries available yet.";
+  }
+
+  return previousEntries
+    .slice(0, 8)
+    .map((entry, index) => {
+      return `
+Previous Entry ${index + 1}:
+Date: ${entry.createdAt || "Unknown"}
+Summary: ${entry.mirror_summary || entry.ai_mirror_short || "No summary"}
+Emotion: ${entry.primary_emotion || "Unknown"}
+Themes: ${(entry.top_themes || []).join(", ") || "None"}
+Keywords: ${(entry.top_keywords || []).join(", ") || "None"}
+`;
+    })
+    .join("\n");
+}
 
 app.get("/", (req, res) => {
-  res.status(200).send("Living Journal API is running");
+  res.send("Living Journal KAI server is running.");
 });
 
 app.post("/mirror", async (req, res) => {
   try {
-    const { entry } = req.body;
+    const { entry, uid } = req.body;
 
-    if (!entry || typeof entry !== "string" || !entry.trim()) {
+    if (!entry || typeof entry !== "string") {
       return res.status(400).json({
-        error: "Entry is required.",
+        error: "Missing journal entry.",
       });
     }
 
-    const cleanedEntry = entry.trim();
+    let previousEntries = [];
+
+    if (uid) {
+      try {
+        const snapshot = await db
+          .collection("LivingJournal")
+          .where("uid", "==", uid)
+          .orderBy("createdAt", "desc")
+          .limit(8)
+          .get();
+
+        previousEntries = snapshot.docs.map((doc) => doc.data());
+      } catch (error) {
+        console.error("Error fetching previous entries:", error);
+      }
+    }
+
+    const trendContext = buildTrendContext(previousEntries);
+
+    const systemPrompt = `
+You are KAI, the reflective awareness engine inside Living Journal.
+
+Your role is not to diagnose, fix, advise, judge, or influence the user.
+Your role is to listen deeply, reflect gently, and help the user notice their own patterns.
+
+You are warm, calm, grounded, emotionally intelligent, and non-clinical.
+
+When responding:
+- Reflect the user's current entry.
+- Notice recurring themes from previous entries if they are present.
+- Do not force patterns if they are weak.
+- Do not make medical or psychological claims.
+- Do not tell the user what to do.
+- Do not overstate certainty.
+- Use phrases like "I notice", "It seems", "This may suggest", "This has appeared before".
+- Help the user feel seen, not analysed.
+
+Return ONLY valid JSON.
+`;
+
+    const userPrompt = `
+Current journal entry:
+"${entry}"
+
+Previous journal context:
+${trendContext}
+
+Please generate a Living Journal reflection in this JSON format:
+
+{
+  "ai_mirror": "A warm, deep reflection of the current entry, including gentle recognition of recurring patterns if relevant.",
+  "ai_mirror_short": "A short 1-2 sentence reflection.",
+  "mirror_summary": "A concise summary of what the user seems to be expressing.",
+  "primary_emotion": "One main emotion suggested by the entry.",
+  "emotion_intensity": 1,
+  "awareness_nudge": "A gentle question or reflection prompt.",
+  "top_keywords": ["keyword1", "keyword2", "keyword3"],
+  "top_themes": ["theme1", "theme2", "theme3"],
+  "recurring_themes": ["theme1", "theme2"],
+  "recurring_emotions": ["emotion1", "emotion2"],
+  "pattern_recognition": "A gentle explanation of any repeated emotional or thought pattern noticed across entries.",
+  "life_thread": "A short sentence naming the ongoing thread in the user's journey.",
+  "kai_recognition": "A deeply human acknowledgement that shows the user their thoughts have been remembered and are not disappearing.",
+  "present_moment_anchor": "A short grounding sentence that helps the user return to now."
+}
+
+Rules:
+- If there is not enough previous context, say this is an early reflection rather than inventing a pattern.
+- emotion_intensity must be a number from 1 to 10.
+- recurring_themes and recurring_emotions may be empty arrays.
+`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      response_format: { type: "json_object" },
       messages: [
-        {
-          role: "system",
-          content: `You are KAI, a grounded mirror for a journaling app.
-
-Your role is not to coach, advise, encourage, interpret symbolically, or ask reflective questions.
-Your role is to reflect the user's entry back to them with emotional accuracy, clarity, and restraint.
-
-You must:
-- stay close to the user's actual words
-- name what feels emotionally central in the entry
-- notice tension, contrast, burden, relief, gratitude, fear, hope, responsibility, conviction, or purpose if clearly present
-- sound calm, human, specific, and real
-
-You must not:
-- give advice
-- ask questions
-- suggest actions
-- praise the user
-- use therapy language
-- use poetic or spiritual language
-- exaggerate the meaning of the entry
-- sound like a coach, motivational writer, or self-help account
-
-Write in a way that makes the user feel accurately seen.
-
-OUTPUT FORMAT (strict JSON):
-{
-  "acknowledgement": "1 short grounded sentence",
-  "ai_mirror_short": "1 concise emotionally accurate line",
-  "ai_mirror": "3-4 sentences, specific and grounded in the entry",
-  "awareness_nudge": "1 short present-focused sentence, not guidance",
-  "primary_emotion": "one lowercase word",
-  "top_themes": ["2-4 grounded phrases"]
-}
-
-Rules for fields:
-- acknowledgement: short and simple
-- ai_mirror_short: direct, clear, emotionally accurate
-- ai_mirror: no fluff, no clichés, no abstraction
-- primary_emotion: choose the clearest emotional centre, not the nicest-sounding word
-- top_themes: grounded phrases only, drawn from what is actually in the entry
-
-Rules for awareness_nudge:
-- it must not ask a question
-- it must not tell the user what to do
-- it must not sound like advice
-- it must feel specific to the entry
-- it must reflect something subtle but real in the user's words
-- if it could apply to almost any entry, it is too generic and should be rewritten
-
-Good awareness_nudge examples:
-- "This feels like a shift you are taking seriously."
-- "There is something steady in what you are building."
-- "This does not feel passing."
-- "Something here feels grounded and lived."
-- "There is a quiet weight to this."
-- "This feels important to stay close to."
-
-Bad awareness_nudge examples:
-- "There is a lot here, and it feels present."
-- "Notice the gratitude you feel."
-- "Take a deep breath and reflect on this."
-- "What small moment can you cherish today?"
-- "You should honour this feeling."
-
-Do not repeat the entry back mechanically.
-Do not explain the user to themselves.
-Help the user feel seen, not improved.`
-        },
-        {
-          role: "user",
-          content: `Journal entry:
-"""
-${cleanedEntry}
-"""
-
-Reflect this entry using the required JSON format only.`,
-        },
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
       ],
+      response_format: { type: "json_object" },
+      temperature: 0.7,
     });
 
-    const raw = completion.choices?.[0]?.message?.content || "{}";
-    const parsed = JSON.parse(raw);
+    const aiResponse = JSON.parse(completion.choices[0].message.content);
 
-    return res.status(200).json(parsed);
+    return res.json({
+      ai_mirror: aiResponse.ai_mirror || "",
+      ai_mirror_short: aiResponse.ai_mirror_short || "",
+      mirror_summary: aiResponse.mirror_summary || "",
+      primary_emotion: aiResponse.primary_emotion || "",
+      emotion_intensity: aiResponse.emotion_intensity || 1,
+      awareness_nudge: aiResponse.awareness_nudge || "",
+      top_keywords: aiResponse.top_keywords || [],
+      top_themes: aiResponse.top_themes || [],
+
+      recurring_themes: aiResponse.recurring_themes || [],
+      recurring_emotions: aiResponse.recurring_emotions || [],
+      pattern_recognition: aiResponse.pattern_recognition || "",
+      life_thread: aiResponse.life_thread || "",
+      kai_recognition: aiResponse.kai_recognition || "",
+      present_moment_anchor: aiResponse.present_moment_anchor || "",
+    });
   } catch (error) {
     console.error("Mirror error:", error);
 
     return res.status(500).json({
-      error: "Failed to generate mirror reflection.",
+      error: "Something went wrong generating the reflection.",
       details: error.message,
     });
   }
@@ -135,5 +173,5 @@ Reflect this entry using the required JSON format only.`,
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Living Journal KAI server running on port ${PORT}`);
 });

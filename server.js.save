@@ -1,77 +1,83 @@
 const express = require("express");
+const cors = require("cors");
 const OpenAI = require("openai");
 
-const app = express();
-app.use(express.json());
-
-const client = new OpenAI({
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const LIVING_JOURNAL_SYSTEM_PROMPT = `
-You are the Living Journal PRO Mirror.
+const app = express();
 
-Your role is not to advise, coach, motivate, fix, summarise, or optimise.
-Your role is to meet the writer exactly where they are, with clarity, depth, and respect.
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+  })
+);
 
-You respond to a single journal entry written by the user.
+app.use(express.json());
 
-You must output a JSON object with EXACTLY these fields:
-- "ai_mirror": string
-- "ai_mirror_short": string
-- "mirror_summary": string
-
-Respond ONLY with a JSON object matching the schema.
-`;
+app.get("/", (req, res) => {
+  res.status(200).send("Living Journal API is running");
+});
 
 app.post("/mirror", async (req, res) => {
   try {
-    const journalEntry = req.body.entry;
+    const { entry } = req.body;
 
-    if (!journalEntry) {
-      return res.status(400).json({ error: "Missing journal entry" });
+    if (!entry || typeof entry !== "string" || !entry.trim()) {
+      return res.status(400).json({
+        error: "Entry is required.",
+      });
     }
 
-    const completion = await client.chat.completions.create({
-      model: "gpt-4.1-mini",
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: LIVING_JOURNAL_SYSTEM_PROMPT },
-        { role: "user", content: journalEntry },
+    const cleanedEntry = entry.trim();
+IMPORTANT:
+- The awareness_nudge must NOT instruct or guide. It should gently bring attention to the 
+present moment.
+- The reflection must feel specific to the entry, not reusable.
+- Do not invent meaning that is not grounded in the text.
+
+You are helping the user feel clearly seen, not told what to do.
+`
+}
+        {
+          role: "user",
+          content: cleanedEntry,
+        },
       ],
-      temperature: 0.7,
     });
 
-    const rawOutput = completion.choices[0].message.content;
-    console.log("Raw mirror output:", rawOutput);
+    const raw = completion.choices?.[0]?.message?.content || "{}";
 
-    const parsedOutput = JSON.parse(rawOutput);
-    res.json(parsedOutput);
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = {};
+    }
+
+    return res.status(200).json({
+      primary_emotion: parsed.primary_emotion || "reflective",
+      emotion_intensity: parsed.emotion_intensity || 5,
+      ai_mirror: parsed.ai_mirror || "You showed up today.",
+      ai_mirror_short: parsed.ai_mirror_short || "You're noticing something.",
+      mirror_summary: parsed.mirror_summary || "Self-awareness present.",
+      awareness_nudge: parsed.awareness_nudge || "Pause and notice.",
+      sentiment_score: parsed.sentiment_score || 0,
+      top_keywords: parsed.top_keywords || ["reflection"],
+      top_themes: parsed.top_themes || ["awareness"],
+      ai_generated: true,
+    });
   } catch (error) {
-    console.error("Mirror error:", error);
-    res.status(500).json({ error: "Mirror failed" });
+    console.error(error);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => {
-  console.log(`Mirror server running on http://localhost:${PORT}`);
-const completion = await client.chat.completions.create({
-  model: "gpt-4.1-mini",
-  messages: [
-    { role: "system", content: LIVING_JOURNAL_SYSTEM_PROMPT },
-    { role: "user", content: journalEntry },
-  ],
-  temperature: 0.7,
+ console.log(`Server running on port ${PORT}`);
 });
-const completion = await client.chat.completions.create({
-  model: "gpt-4.1-mini",
-  messages: [
-    { role: "system", content: LIVING_JOURNAL_SYSTEM_PROMPT },
-    { role: "user", content: journalEntry },
-  ],
-  temperature: 0.7,
-});
-
-
 
