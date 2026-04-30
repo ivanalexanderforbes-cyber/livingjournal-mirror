@@ -372,15 +372,14 @@ app.post('/mirror', async (req, res) => {
     const pattern_recognition = "Patterns may become clearer over time.";
 
     return res.json({
-      ai_mirror,
-      mirror_summary,
-      primary_emotion,
-      awareness_nudge,
-      life_thread,
-      pattern_recognition,
-      safety_flag,
-      safety_score: safety_flag === "none" ? 0 : 0.9
-    });
+  ai_mirror,
+  mirror_summary,
+  primary_emotion,
+  awareness_nudge,
+  life_thread,
+  pattern_recognition,
+  safety_flag
+});
 
   } catch (error) {
     console.error("Mirror error:", error);
