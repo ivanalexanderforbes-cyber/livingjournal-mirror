@@ -333,21 +333,61 @@ async function updateKaiMemory({ uid, existingMemory, aiResponse }) {
   return updatedMemory;
 }
 
-app.post("/mirror", async (req, res) => {
+app.post('/mirror', async (req, res) => {
   try {
-    const { entry, uid } = req.body;
+    const { entry } = req.body;
 
-    if (!entry || typeof entry !== "string") {
-      return res.status(400).json({
-        error: "Missing journal entry.",
-      });
+    if (!entry) {
+      return res.status(400).json({ error: "Entry is required" });
     }
 
-    if (!uid || typeof uid !== "string") {
-      return res.status(400).json({
-        error: "Missing user uid.",
-      });
+    const text = entry.toLowerCase();
+
+    // 🔴 SAFETY CHECK
+    let safety_flag = "none";
+
+    if (
+      text.includes("kill myself") ||
+      text.includes("end my life") ||
+      text.includes("suicide") ||
+      text.includes("don't want to live")
+    ) {
+      safety_flag = "self_harm";
     }
+
+    if (
+      text.includes("hurt someone") ||
+      text.includes("kill them") ||
+      text.includes("attack")
+    ) {
+      safety_flag = "harm_to_others";
+    }
+
+    // 🧠 BASIC REFLECTION (safe + neutral)
+    const ai_mirror = "You showed up today. There’s something meaningful in what you shared.";
+    const mirror_summary = "Your entry has been received.";
+    const primary_emotion = "Reflection";
+    const awareness_nudge = "What feels most present for you right now?";
+    const life_thread = "This entry is part of your awareness journey.";
+    const pattern_recognition = "Patterns may become clearer over time.";
+
+    return res.json({
+      ai_mirror,
+      mirror_summary,
+      primary_emotion,
+      awareness_nudge,
+      life_thread,
+      pattern_recognition,
+      safety_flag,
+      safety_score: safety_flag === "none" ? 0 : 0.9
+    });
+
+  } catch (error) {
+    console.error("Mirror error:", error);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+}
 
     const recentEntries = await getRecentEntries(uid);
     const recentEntriesContext = buildRecentEntriesContext(recentEntries);
