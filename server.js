@@ -361,7 +361,7 @@ app.post('/mirror', async (req, res) => {
       text.includes("attack")
     ) {
       safety_flag = "harm_to_others";
-    }
+    });
 
     // 🧠 BASIC REFLECTION (safe + neutral)
     const ai_mirror = "You showed up today. There’s something meaningful in what you shared.";
