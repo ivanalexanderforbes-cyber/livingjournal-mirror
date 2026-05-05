@@ -3,113 +3,107 @@ const cors = require("cors");
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 
-// Health check
 app.get("/", (req, res) => {
-  res.send("Living Journal Mirror is running 🚀");
+  res.send("Living Journal Mirror is running");
 });
 
-// Mirror endpoint
 app.post("/mirror", async (req, res) => {
   try {
     const entry = req.body.entry;
 
-    if (!entry) {
+    if (!entry || typeof entry !== "string") {
       return res.status(400).json({ error: "No entry provided" });
     }
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
+        response_format: { type: "json_object" },
         messages: [
           {
-           content: `
-You are KAI — a deep awareness engine.
-
-You do NOT give motivational advice.
-You do NOT summarise casually.
-You do NOT sound like a coach.
-
-You read journal entries and:
-- identify the underlying shift in thinking
-- recognise patterns of ownership, avoidance, growth, or tension
-- reflect the truth back clearly and calmly
-
-Your tone:
-- grounded
-- precise
-- human
-- never generic
-
-You avoid phrases like:
-"It sounds like..."
-"You're in a good place..."
-"This is great..."
-
-Instead:
-- name what is actually happening beneath the words
-- highlight subtle changes in mindset
-- point out what has shifted internally
-
-If there is NO danger:
-→ stay reflective
-
-ONLY if there is CLEAR mention of self-harm or danger:
-→ shift into support tone
-
-Return ONLY the reflection text. No labels. No formatting.
-`          },
+            role: "system",
+            content:
+              "You are KAI, the reflection engine for Living Journal. Return only valid JSON. Do not diagnose. Do not judge. Do not give instructions. Reflect the user's journal entry with depth, clarity, and warmth. Only use support or crisis language if the entry clearly mentions self-harm, suicide, harming others, or immediate danger.",
+          },
           {
             role: "user",
-            content: entry
-          }
-        ]
-      })
+            content: `Read this journal entry and return valid JSON with exactly these keys:
+{
+  "primary_emotion": "one fitting word",
+  "emotion_intensity": 1,
+  "ai_mirror": "deep human reflection",
+  "ai_mirror_short": "short version",
+  "awareness_nudge": "one reflective question",
+  "pattern_recognition": "one pattern noticed",
+  "life_thread": "one deeper life thread",
+  "top_keywords": ["word1", "word2", "word3"],
+  "top_themes": ["theme1"],
+  "safety_flag": "none"
+}
+
+If the user clearly expresses self-harm, suicide, harming others, or immediate danger, set primary_emotion to "Support", safety_flag to "self_harm" or "harm_to_others", and make the response direct them toward trusted people, support services, or emergency services.
+
+Journal entry:
+${entry}`,
+          },
+        ],
+      }),
     });
 
     const data = await response.json();
 
-if (!response.ok) {
-  console.error("❌ OpenAI API ERROR:", data);
-  return res.status(500).json({
-    error: "OpenAI failed",
-    details: data
-  });
-}
+    if (!response.ok) {
+      console.error("OpenAI API error:", JSON.stringify(data));
+      return res.status(500).json({
+        error: "OpenAI failed",
+        details: data,
+      });
+    }
 
-if (!data.choices || !data.choices[0]) {
-  console.error("❌ INVALID RESPONSE:", data);
-  return res.status(500).json({
-    error: "Invalid AI response",
-    details: data
-  });
-}
+    const content = data.choices?.[0]?.message?.content;
 
-const reply = data.choices[0].message.content;
-    res.json({
-      primary_emotion: "Present",
-      ai_mirror: reply,
-      awareness_nudge: "Stay aware of what is shaping your thoughts today.",
-      pattern_recognition: "",
-      life_thread: ""
-    });
+    if (!content) {
+      return res.status(500).json({
+        error: "No AI content returned",
+        details: data,
+      });
+    }
 
+    let parsed;
+    try {
+      parsed = JSON.parse(content.replace(/```json/g, "").replace(/```/g, "").trim());
+    } catch (e) {
+      parsed = {
+        primary_emotion: "Reflective",
+        emotion_intensity: 5,
+        ai_mirror: content,
+        ai_mirror_short: content.slice(0, 160),
+        awareness_nudge: "What feels most important to notice from this entry?",
+        pattern_recognition: "This entry shows a moment of reflection.",
+        life_thread: "You are continuing to build awareness through writing.",
+        top_keywords: ["reflection"],
+        top_themes: ["awareness"],
+        safety_flag: "none",
+      };
+    }
+
+    return res.json(parsed);
   } catch (error) {
-    console.error("🔥 ERROR:", error);
-    res.status(500).json({
+    console.error("Server error:", error);
+    return res.status(500).json({
       error: "Mirror failed",
-      details: error.message
+      details: error.message,
     });
   }
 });
 
-// Start server
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
