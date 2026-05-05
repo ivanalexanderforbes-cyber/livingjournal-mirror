@@ -75,8 +75,23 @@ Return ONLY the reflection text. No labels. No formatting.
 
     const data = await response.json();
 
-    const reply = data.choices?.[0]?.message?.content || "No reflection generated.";
+if (!response.ok) {
+  console.error("❌ OpenAI API ERROR:", data);
+  return res.status(500).json({
+    error: "OpenAI failed",
+    details: data
+  });
+}
 
+if (!data.choices || !data.choices[0]) {
+  console.error("❌ INVALID RESPONSE:", data);
+  return res.status(500).json({
+    error: "Invalid AI response",
+    details: data
+  });
+}
+
+const reply = data.choices[0].message.content;
     res.json({
       primary_emotion: "Present",
       ai_mirror: reply,
