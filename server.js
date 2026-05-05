@@ -3,167 +3,160 @@ const cors = require("cors");
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json());
 
+// 🔐 Make sure this exists in Render ENV
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+// ✅ Health check
 app.get("/", (req, res) => {
-  res.send("Living Journal Mirror is running");
+  res.send("Living Journal mirror service running");
 });
 
+// 🚨 MIRROR ENDPOINT
 app.post("/mirror", async (req, res) => {
   try {
-    const entry = req.body.entry;
+    const entry = req.body.entry || "";
+
+    // =========================
     // 🚨 SAFETY DETECTION LAYER
-const highRiskKeywords = [
-  "kill myself",
-  "end my life",
-  "suicide",
-  "want to die",
-  "hurt myself",
-  "no reason to live",
-  "better off dead"
-];
+    // =========================
+    const text = entry.toLowerCase();
 
-const isHighRisk = highRiskKeywords.some(k =>
-  entry.toLowerCase().includes(k)
-);
+    const highRiskKeywords = [
+      "kill myself",
+      "end my life",
+      "suicide",
+      "want to die",
+      "hurt myself",
+      "no reason to live",
+      "better off dead",
+      "dont want to live",
+      "don't want to live"
+    ];
 
-if (isHighRisk) {
-  return res.json({
-    primary_emotion: "Support",
-    ai_mirror: "I'm really sorry you're feeling this way. You don’t have to go through this alone. If you can, please consider reaching out to someone you trust or a support service near you. If you're in immediate danger, please contact local emergency services.",
-    awareness_nudge: "Who is one person you could reach out to right now?",
-    pattern_recognition: "This entry signals a need for support rather than reflection.",
-    life_thread: "Your safety matters more than analysis in this moment."
-  });
-}
+    const isHighRisk = highRiskKeywords.some((phrase) =>
+      text.includes(phrase)
+    );
 
-    if (!entry || typeof entry !== "string") {
-      return res.status(400).json({ error: "No entry provided" });
+    if (isHighRisk) {
+      return res.json({
+        primary_emotion: "Support",
+        emotion_intensity: 9,
+        ai_mirror:
+          "I'm really sorry you're feeling this way. You do not have to go through this alone. If you can, please reach out to someone you trust or a support service near you. If you are in immediate danger, please contact local emergency services now.",
+        ai_mirror_short:
+          "You are not alone. Please reach out to someone you trust.",
+        awareness_nudge:
+          "Who is one safe person you could contact right now?",
+        pattern_recognition:
+          "This entry signals a need for support rather than reflection.",
+        life_thread:
+          "Your safety matters more than analysis in this moment.",
+        top_keywords: ["support", "safety", "help"],
+        top_themes: ["safety_support"],
+        safety_flag: "self_harm"
+      });
     }
+
+    // =========================
+    // 🤖 NORMAL AI REFLECTION
+    // =========================
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
+        "Authorization": `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        response_format: { type: "json_object" },
         messages: [
           {
             role: "system",
-            content:
             content: `
-You are KAI — an awareness engine designed to reflect truth, not comfort.
+You are KAI.
 
-You do NOT:
-- give advice
-- motivate
-- summarise loosely
-- use generic phrases like "it sounds like" or "this is great"
+Your role:
+- Reflect the user's journal entry with depth, clarity and emotional intelligence.
+- NEVER be generic.
+- NEVER default to "support" unless there is clear danger.
+- Match tone to the entry.
 
-You DO:
-- identify what has shifted in the person's thinking
-- notice where ownership, responsibility, or awareness has increased or decreased
-- reflect patterns in how they see themselves and their life
-- highlight what is *actually happening beneath the words*
+Return ONLY JSON in this format:
 
-Your tone is:
-- grounded
-- clear
-- calm
-- human
-- direct, but never harsh
-
-If the entry is positive:
-→ reflect the internal shift that created it
-
-If the entry shows struggle:
-→ reflect the tension or pattern without fixing it
-
-ONLY switch to support mode if there is clear mention of:
-- self-harm
-- suicide
-- harm to others
-- immediate danger
-
-Return clean JSON only.
-No extra commentary.
-`          },
+{
+  "primary_emotion": "...",
+  "emotion_intensity": 1-10,
+  "ai_mirror": "...",
+  "ai_mirror_short": "...",
+  "awareness_nudge": "...",
+  "pattern_recognition": "...",
+  "life_thread": "...",
+  "top_keywords": ["...", "..."],
+  "top_themes": ["..."]
+}
+            `
+          },
           {
             role: "user",
-            content: `Read this journal entry and return valid JSON with exactly these keys:
-{
-  "primary_emotion": "one fitting word",
-  "emotion_intensity": 1,
-  "ai_mirror": "deep human reflection",
-  "ai_mirror_short": "short version",
-  "awareness_nudge": "one reflective question",
-  "pattern_recognition": "one pattern noticed",
-  "life_thread": "one deeper life thread",
-  "top_keywords": ["word1", "word2", "word3"],
-  "top_themes": ["theme1"],
-  "safety_flag": "none"
-}
-
-If the user clearly expresses self-harm, suicide, harming others, or immediate danger, set primary_emotion to "Support", safety_flag to "self_harm" or "harm_to_others", and make the response direct them toward trusted people, support services, or emergency services.
-
-Journal entry:
-${entry}`,
-          },
+            content: entry
+          }
         ],
-      }),
+        temperature: 0.7
+      })
     });
 
     const data = await response.json();
 
-    if (!response.ok) {
-      console.error("OpenAI API error:", JSON.stringify(data));
-      return res.status(500).json({
-        error: "OpenAI failed",
-        details: data,
+    const raw = data.choices?.[0]?.message?.content;
+
+    if (!raw) {
+      return res.json({
+        primary_emotion: "Present",
+        emotion_intensity: 5,
+        ai_mirror: "No reflection generated.",
+        ai_mirror_short: "",
+        awareness_nudge: "",
+        pattern_recognition: "",
+        life_thread: "",
+        top_keywords: [],
+        top_themes: []
       });
     }
 
-    const content = data.choices?.[0]?.message?.content;
-
-    if (!content) {
-      return res.status(500).json({
-        error: "No AI content returned",
-        details: data,
-      });
-    }
-
+    // Try parse JSON safely
     let parsed;
     try {
-      parsed = JSON.parse(content.replace(/```json/g, "").replace(/```/g, "").trim());
+      parsed = JSON.parse(raw);
     } catch (e) {
-      parsed = {
-        primary_emotion: "Reflective",
+      return res.json({
+        primary_emotion: "Present",
         emotion_intensity: 5,
-        ai_mirror: content,
-        ai_mirror_short: content.slice(0, 160),
-        awareness_nudge: "What feels most important to notice from this entry?",
-        pattern_recognition: "This entry shows a moment of reflection.",
-        life_thread: "You are continuing to build awareness through writing.",
-        top_keywords: ["reflection"],
-        top_themes: ["awareness"],
-        safety_flag: "none",
-      };
+        ai_mirror: raw,
+        ai_mirror_short: "",
+        awareness_nudge: "",
+        pattern_recognition: "",
+        life_thread: "",
+        top_keywords: [],
+        top_themes: []
+      });
     }
 
     return res.json(parsed);
+
   } catch (error) {
-    console.error("Server error:", error);
+    console.error(error);
+
     return res.status(500).json({
       error: "Mirror failed",
-      details: error.message,
+      details: error.message
     });
   }
 });
 
+// 🚀 START SERVER
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log("Server running on port", PORT);
 });
