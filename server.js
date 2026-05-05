@@ -75,9 +75,13 @@ ${entry}
 
     return res.json(parsed);
   } catch (error) {
-    console.error("Error:", error);
-    return res.status(500).json({ error: "Something went wrong" });
-  }
+  console.error("FULL ERROR:", error);
+
+  return res.status(500).json({
+    error: "Mirror failed",
+    details: error.message,
+  });
+}
 });
 
 const PORT = process.env.PORT || 10000;
