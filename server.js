@@ -71,7 +71,26 @@ ${entry}
       .replace(/```/g, "")
       .trim();
 
-    const parsed = JSON.parse(aiResponse);
+    let parsed;
+
+try {
+  parsed = JSON.parse(aiResponse);
+} catch (parseError) {
+  console.error("JSON PARSE ERROR:", aiResponse);
+
+  return res.json({
+    primary_emotion: "Reflective",
+    emotion_intensity: 5,
+    ai_mirror: "You're taking time to reflect, which already shows awareness and intention.",
+    ai_mirror_short: "You're reflecting and growing.",
+    awareness_nudge: "What is one thing you want to improve tomorrow?",
+    life_thread: "This moment reflects a commitment to growth.",
+    pattern_recognition: "You are building self-awareness through reflection.",
+    top_keywords: ["reflection"],
+    top_themes: ["growth"],
+    support_mode: false
+  });
+}
 
     return res.json(parsed);
   } catch (error) {
