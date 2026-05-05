@@ -12,6 +12,30 @@ app.get("/", (req, res) => {
 app.post("/mirror", async (req, res) => {
   try {
     const entry = req.body.entry;
+    // 🚨 SAFETY DETECTION LAYER
+const highRiskKeywords = [
+  "kill myself",
+  "end my life",
+  "suicide",
+  "want to die",
+  "hurt myself",
+  "no reason to live",
+  "better off dead"
+];
+
+const isHighRisk = highRiskKeywords.some(k =>
+  entry.toLowerCase().includes(k)
+);
+
+if (isHighRisk) {
+  return res.json({
+    primary_emotion: "Support",
+    ai_mirror: "I'm really sorry you're feeling this way. You don’t have to go through this alone. If you can, please consider reaching out to someone you trust or a support service near you. If you're in immediate danger, please contact local emergency services.",
+    awareness_nudge: "Who is one person you could reach out to right now?",
+    pattern_recognition: "This entry signals a need for support rather than reflection.",
+    life_thread: "Your safety matters more than analysis in this moment."
+  });
+}
 
     if (!entry || typeof entry !== "string") {
       return res.status(400).json({ error: "No entry provided" });
